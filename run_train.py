@@ -76,7 +76,7 @@ class TrainManager(Config):
         # TODO: what if each phase want diff annotation ?
         phase_list = self.model_config["phase_list"][0]
         target_info = phase_list["target_info"]
-        dataloader = self.get_datagen(1, mode, target_info["gen"])
+        dataloader = self._get_datagen(1, mode, target_info["gen"])
         for batch_data in dataloader:  # convert from Tensor to Numpy
             batch_data_np = {k: v.numpy() for k, v in batch_data.items()}
             # TODO: a separate func, not static method ?
