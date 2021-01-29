@@ -153,6 +153,7 @@ class InferManager(base.InferManager):
         """
         for variable, value in run_args.items():
             self.__setattr__(variable, value)
+        assert self.mem_usage < 1.0 and self.mem_usage > 0.0
 
         # * depend on the number of samples and their size, this may be less efficient
         patterning = lambda x: re.sub("([\[\]])", "[\\1]", x)
@@ -231,7 +232,7 @@ class InferManager(base.InferManager):
 
             hardware_stats = psutil.virtual_memory()
             available_ram = getattr(hardware_stats, "available")
-            available_ram = int(available_ram * 0.6)
+            available_ram = int(available_ram * self.mem_usage)
             # available_ram >> 20 for MB, >> 30 for GB
 
             # TODO: this portion looks clunky but seems hard to detach into separate func
@@ -341,7 +342,7 @@ class InferManager(base.InferManager):
                 overlay_kwargs = {
                     "draw_dot": self.draw_dot,
                     "type_colour": self.type_info_dict,
-                    "line_thickness": 1,
+                    "line_thickness": 2,
                 }
                 func_args = (
                     self.post_proc_func,
@@ -361,21 +362,21 @@ class InferManager(base.InferManager):
                     proc_output = _post_process_patches(*func_args)
                     proc_callback(proc_output)
 
-        if proc_pool is not None:
-            # loop over all to check state a.k.a polling
-            for future in as_completed(future_list):
-                # TODO: way to retrieve which file crashed ?
-                # ! silent crash, cancel all and raise error
-                if future.exception() is not None:
-                    log_info("Silent Crash")
-                    # ! cancel somehow leads to cascade error later
-                    # ! so just poll it then crash once all future
-                    # ! acquired for now
-                    # for future in future_list:
-                    #     future.cancel()
-                    # break
-                else:
-                    file_path = proc_callback(future.result())
-                    log_info("Done Assembling %s" % file_path)
+            if proc_pool is not None:
+                # loop over all to check state a.k.a polling
+                for future in as_completed(future_list):
+                    # TODO: way to retrieve which file crashed ?
+                    # ! silent crash, cancel all and raise error
+                    if future.exception() is not None:
+                        log_info("Silent Crash")
+                        # ! cancel somehow leads to cascade error later
+                        # ! so just poll it then crash once all future
+                        # ! acquired for now
+                        # for future in future_list:
+                        #     future.cancel()
+                        # break
+                    else:
+                        file_path = proc_callback(future.result())
+                        log_info("Done Assembling %s" % file_path)
         return
 

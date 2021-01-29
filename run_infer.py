@@ -19,7 +19,7 @@ Options:
                               'original' or 'fast'. [default: fast]
   --nr_inference_workers=<n>  Number of workers during inference. [default: 8]
   --nr_post_proc_workers=<n>  Number of workers during post-processing. [default: 16]
-  --batch_size=<n>            Batch size. [default: 128]
+  --batch_size=<n>            Batch size per 1 GPU. [default: 32]
 
 Two command mode are `tile` and `wsi` to enter corresponding inference mode
     tile  run the inference on tile
@@ -33,12 +33,15 @@ Arguments for processing tiles.
 
 usage:
     tile (--input_dir=<path>) (--output_dir=<path>) \
-         [--draw_dot] [--save_qupath] [--save_raw_map]
+         [--draw_dot] [--save_qupath] [--save_raw_map] [--mem_usage=<n>]
     
 options:
    --input_dir=<path>     Path to input data directory. Assumes the files are not nested within directory.
    --output_dir=<path>    Path to output directory..
 
+   --mem_usage=<n>        Declare how much memory (physical + swap) should be used for caching. 
+                          By default it will load as many tiles as possible till reaching the 
+                          declared limit. [default: 0.2]
    --draw_dot             To draw nuclei centroid on overlay. [default: False]
    --save_qupath          To optionally output QuPath v0.2.3 compatible format. [default: False]
    --save_raw_map         To save raw prediction or not. [default: False]
@@ -68,9 +71,11 @@ options:
     --save_mask             To save mask. [default: False]
 """
 
+import torch
 import logging
 import os
 import copy
+from misc.utils import log_info
 from docopt import docopt
 
 #-------------------------------------------------------------------------------------------------------
@@ -81,6 +86,16 @@ if __name__ == '__main__':
                     version='HoVer-Net Pytorch Inference v1.0')
     sub_cmd = args.pop('<command>')
     sub_cmd_args = args.pop('<args>')
+
+    # ! TODO: where to save logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='|%(asctime)s.%(msecs)03d| [%(levelname)s] %(message)s',datefmt='%Y-%m-%d|%H:%M:%S',
+        handlers=[
+            logging.FileHandler("debug.log"),
+            logging.StreamHandler()
+        ]
+    )
 
     if args['--help'] and sub_cmd is not None:
         if sub_cmd in sub_cli_dict: 
@@ -97,6 +112,9 @@ if __name__ == '__main__':
     args.pop('--version')
     gpu_list = args.pop('--gpu')
     os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
+
+    nr_gpus = torch.cuda.device_count()
+    log_info('Detect #GPUS: %d' % nr_gpus)
 
     args = {k.replace('--', '') : v for k, v in args.items()}
     sub_args = {k.replace('--', '') : v for k, v in sub_args.items()}
@@ -118,7 +136,7 @@ if __name__ == '__main__':
 
     # ***
     run_args = {
-        'batch_size' : int(args['batch_size']),
+        'batch_size' : int(args['batch_size']) * nr_gpus,
 
         'nr_inference_workers' : int(args['nr_inference_workers']),
         'nr_post_proc_workers' : int(args['nr_post_proc_workers']),
@@ -136,6 +154,7 @@ if __name__ == '__main__':
             'input_dir'      : sub_args['input_dir'],
             'output_dir'     : sub_args['output_dir'],
 
+            'mem_usage'   : float(sub_args['mem_usage']),
             'draw_dot'    : sub_args['draw_dot'],
             'save_qupath' : sub_args['save_qupath'],
             'save_raw_map': sub_args['save_raw_map'],
@@ -157,16 +176,6 @@ if __name__ == '__main__':
         })
     # ***
     
-    # ! TODO: where to save logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='|%(asctime)s.%(msecs)03d| [%(levelname)s] %(message)s',datefmt='%Y-%m-%d|%H:%M:%S',
-        handlers=[
-            logging.FileHandler("debug.log"),
-            logging.StreamHandler()
-        ]
-    )
-
     if sub_cmd == 'tile':
         from infer.tile import InferManager
         infer = InferManager(**method_args)
