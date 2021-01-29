@@ -1,32 +1,7 @@
-import logging
-import multiprocessing
-from multiprocessing import Lock, Pool
-
-multiprocessing.set_start_method("spawn", True)  # ! must be at top for VScode debugging
-import argparse
-import glob
-import json
-import math
-import multiprocessing as mp
-import os
-import pathlib
-import pickle
-import re
-import sys
-import warnings
-from concurrent.futures import FIRST_EXCEPTION, ProcessPoolExecutor, as_completed, wait
-from functools import reduce
-from importlib import import_module
-from multiprocessing import Lock, Pool
-
-import cv2
-import numpy as np
-import psutil
-import scipy.io as sio
-import torch
-import torch.utils.data as data
-import tqdm
-from dataloader.infer_loader import SerializeArray, SerializeFileList
+from . import base
+import convert_format
+from skimage import color
+from misc.viz_utils import colorize, visualize_instances_dict
 from misc.utils import (
     color_deconvolution,
     cropping_center,
@@ -35,23 +10,46 @@ from misc.utils import (
     log_info,
     rm_n_mkdir,
 )
-from misc.viz_utils import colorize, visualize_instances_dict
-from skimage import color
+from dataloader.infer_loader import SerializeArray, SerializeFileList
+import tqdm
+import torch.utils.data as data
+import torch
+import scipy.io as sio
+import psutil
+import numpy as np
+import cv2
+from importlib import import_module
+from functools import reduce
+from concurrent.futures import FIRST_EXCEPTION, ProcessPoolExecutor, as_completed, wait
+import warnings
+import sys
+import re
+import pickle
+import pathlib
+import os
+import multiprocessing as mp
+import math
+import json
+import glob
+import argparse
+import logging
+import multiprocessing
+from multiprocessing import Lock, Pool
 
-import convert_format
-from . import base
+# ! must be at top for VScode debugging
+multiprocessing.set_start_method("spawn", True)
 
 
 ####
 def _prepare_patching(img, window_size, mask_size, return_src_top_corner=False):
     """Prepare patch information for tile processing.
-    
+
     Args:
         img: original input image
         window_size: input patch size
         mask_size: output patch size
         return_src_top_corner: whether to return coordiante information for top left corner of img
-        
+
     """
 
     win_size = window_size
@@ -99,7 +97,7 @@ def _post_process_patches(
     post_proc_func, post_proc_kwargs, patch_info, image_info, overlay_kwargs,
 ):
     """Apply post processing to patches.
-    
+
     Args:
         post_proc_func: post processing function to use
         post_proc_kwargs: keyword arguments used in post processing function
@@ -155,11 +153,12 @@ class InferManager(base.InferManager):
             self.__setattr__(variable, value)
 
         # * depend on the number of samples and their size, this may be less efficient
-        patterning = lambda x: re.sub("([\[\]])", "[\\1]", x)
-        file_path_list = glob.glob(patterning("%s/*" % self.input_dir))
-        file_path_list.sort()  # ensure same order
+        def patterning(x):
+            return re.sub("([\[\]])", "[\\1]", x)
+        file_path_list = list(pathlib.Path(self.input_dir).glob('**/*.tif'))
+        # file_path_list.sort()  # ensure same order
         assert len(file_path_list) > 0, 'Not Detected Any Files From Path'
-        
+
         rm_n_mkdir(self.output_dir + '/json/')
         rm_n_mkdir(self.output_dir + '/mat/')
         rm_n_mkdir(self.output_dir + '/overlay/')
@@ -168,7 +167,7 @@ class InferManager(base.InferManager):
 
         def proc_callback(results):
             """Post processing callback.
-            
+
             Output format is implicit assumption, taken from `_post_process_patches`
 
             """
@@ -180,27 +179,29 @@ class InferManager(base.InferManager):
                 "inst_map": pred_inst,
                 "inst_type": inst_type,
             }
-            if self.nr_types is None: # matlab does not have None type array
-                mat_dict.pop("inst_type", None) 
+            if self.nr_types is None:  # matlab does not have None type array
+                mat_dict.pop("inst_type", None)
 
             if self.save_raw_map:
                 mat_dict["raw_map"] = pred_map
-            save_path = "%s/mat/%s.mat" % (self.output_dir, img_name)
+            save_path = "{}/mat/{}.mat".format(self.output_dir, img_name)
             sio.savemat(save_path, mat_dict)
 
-            save_path = "%s/overlay/%s.png" % (self.output_dir, img_name)
-            cv2.imwrite(save_path, cv2.cvtColor(overlaid_img, cv2.COLOR_RGB2BGR))
+            save_path = "{}/overlay/{}.png".format(self.output_dir, img_name)
+            cv2.imwrite(save_path, cv2.cvtColor(
+                overlaid_img, cv2.COLOR_RGB2BGR))
 
             if self.save_qupath:
                 nuc_val_list = list(inst_info_dict.values())
+
                 nuc_type_list = np.array([v["type"] for v in nuc_val_list])
                 nuc_coms_list = np.array([v["centroid"] for v in nuc_val_list])
-                save_path = "%s/qupath/%s.tsv" % (self.output_dir, img_name)
+                save_path = "{}/qupath/{}.tsv".format(self.output_dir, img_name)
                 convert_format.to_qupath(
                     save_path, nuc_coms_list, nuc_type_list, self.type_info_dict
                 )
 
-            save_path = "%s/json/%s.json" % (self.output_dir, img_name)
+            save_path = "{}/json/{}.json".format(self.output_dir, img_name)
             self.__save_json(save_path, inst_info_dict, None)
             return img_name
 
@@ -246,17 +247,25 @@ class InferManager(base.InferManager):
             cache_patch_info_list = []
             cache_image_info_list = []
             while len(file_path_list) > 0:
-                file_path = file_path_list.pop(0)
+                file_path = str(file_path_list.pop(0))
 
                 img = cv2.imread(file_path)
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                # no need to resize the image
+                # if we train and test on the same SCRC
+                # downscale is meant for train on ConSep
+                # and test on SCRC
+                # h, w, c = img.shape
+                # img = cv2.resize(img, (h // 2, w // 2))
                 src_shape = img.shape
 
                 img, patch_info, top_corner = _prepare_patching(
                     img, self.patch_input_shape, self.patch_output_shape, True
                 )
-                self_idx = np.full(patch_info.shape[0], file_idx, dtype=np.int32)
-                patch_info = np.concatenate([patch_info, self_idx[:, None]], axis=-1)
+                self_idx = np.full(
+                    patch_info.shape[0], file_idx, dtype=np.int32)
+                patch_info = np.concatenate(
+                    [patch_info, self_idx[:, None]], axis=-1)
                 # ? may be expensive op
                 patch_info = np.split(patch_info, patch_info.shape[0], axis=0)
                 patch_info = [np.squeeze(p) for p in patch_info]
@@ -273,7 +282,8 @@ class InferManager(base.InferManager):
                 cache_image_list.append(img)
                 cache_patch_info_list.extend(patch_info)
                 # TODO: refactor to explicit protocol
-                cache_image_info_list.append([src_shape, len(patch_info), top_corner])
+                cache_image_info_list.append(
+                    [src_shape, len(patch_info), top_corner])
 
             # * apply neural net on cached data
             dataset = SerializeFileList(
@@ -305,8 +315,10 @@ class InferManager(base.InferManager):
                 sample_output_list = np.split(
                     sample_output_list, curr_batch_size, axis=0
                 )
-                sample_info_list = np.split(sample_info_list, curr_batch_size, axis=0)
-                sample_output_list = list(zip(sample_info_list, sample_output_list))
+                sample_info_list = np.split(
+                    sample_info_list, curr_batch_size, axis=0)
+                sample_output_list = list(
+                    zip(sample_info_list, sample_output_list))
                 accumulated_patch_output.extend(sample_output_list)
                 pbar.update()
             pbar.close()
@@ -319,11 +331,12 @@ class InferManager(base.InferManager):
                 )
 
                 # * detach this into func and multiproc dispatch it
-                src_pos = image_info[2]  # src top left corner within padded image
+                # src top left corner within padded image
+                src_pos = image_info[2]
                 src_image = cache_image_list[file_idx]
                 src_image = src_image[
-                    src_pos[0] : src_pos[0] + image_info[0][0],
-                    src_pos[1] : src_pos[1] + image_info[0][1],
+                    src_pos[0]: src_pos[0] + image_info[0][0],
+                    src_pos[1]: src_pos[1] + image_info[0][1],
                 ]
 
                 base_name = pathlib.Path(file_path).stem
@@ -353,7 +366,8 @@ class InferManager(base.InferManager):
 
                 # dispatch for parallel post-processing
                 if proc_pool is not None:
-                    proc_future = proc_pool.submit(_post_process_patches, *func_args)
+                    proc_future = proc_pool.submit(
+                        _post_process_patches, *func_args)
                     # ! manually poll future and call callback later as there is no guarantee
                     # ! that the callback is called from main thread
                     future_list.append(proc_future)
@@ -376,6 +390,5 @@ class InferManager(base.InferManager):
                     # break
                 else:
                     file_path = proc_callback(future.result())
-                    log_info("Done Assembling %s" % file_path)
+                    log_info("Done Assembling {}".format(file_path))
         return
-

@@ -35,7 +35,7 @@ class FileLoader(torch.utils.data.Dataset):
         input_shape: shape of the input [h,w] - defined in config.py
         mask_shape: shape of the output [h,w] - defined in config.py
         mode: 'train' or 'valid'
-        
+
     """
 
     # TODO: doc string
@@ -97,7 +97,7 @@ class FileLoader(torch.utils.data.Dataset):
         if self.with_type:
             type_map = (ann[..., 1]).copy()
             type_map = cropping_center(type_map, self.mask_shape)
-            type_map[type_map == 5] = 1  # merge neoplastic and non-neoplastic
+            # type_map[type_map == 5] = 1  # merge neoplastic and non-neoplastic
             feed_dict["tp_map"] = type_map
 
         # TODO: document hard coded assumption about #input
@@ -142,11 +142,13 @@ class FileLoader(torch.utils.data.Dataset):
                     [
                         iaa.Lambda(
                             seed=rng,
-                            func_images=lambda *args: gaussian_blur(*args, max_ksize=3),
+                            func_images=lambda *args: gaussian_blur(
+                                *args, max_ksize=3),
                         ),
                         iaa.Lambda(
                             seed=rng,
-                            func_images=lambda *args: median_blur(*args, max_ksize=3),
+                            func_images=lambda *args: median_blur(
+                                *args, max_ksize=3),
                         ),
                         iaa.AdditiveGaussianNoise(
                             loc=0, scale=(0.0, 0.05 * 255), per_channel=0.5
@@ -157,7 +159,8 @@ class FileLoader(torch.utils.data.Dataset):
                     [
                         iaa.Lambda(
                             seed=rng,
-                            func_images=lambda *args: add_to_hue(*args, range=(-8, 8)),
+                            func_images=lambda *args: add_to_hue(
+                                *args, range=(-8, 8)),
                         ),
                         iaa.Lambda(
                             seed=rng,

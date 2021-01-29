@@ -1,3 +1,4 @@
+from itertools import chain
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
@@ -9,6 +10,8 @@ from .utils import crop_to_shape, dice_loss, mse_loss, msge_loss, xentropy_loss
 from collections import OrderedDict
 
 ####
+
+
 def train_step(batch_data, run_info):
     # TODO: synchronize the attach protocol
     run_info, state_info = run_info
@@ -20,7 +23,10 @@ def train_step(batch_data, run_info):
     }
     # use 'ema' to add for EMA calculation, must be scalar!
     result_dict = {"EMA": {}}
-    track_value = lambda name, value: result_dict["EMA"].update({name: value})
+
+    def track_value(name, value):
+        return result_dict["EMA"].update(
+            {name: value})
 
     ####
     model = run_info["net"]["desc"]
@@ -73,7 +79,8 @@ def train_step(batch_data, run_info):
             if loss_name == "msge":
                 loss_args.append(true_np_onehot[..., 1])
             term_loss = loss_func(*loss_args)
-            track_value("loss_%s_%s" % (branch_name, loss_name), term_loss.cpu().item())
+            track_value("loss_{}_{}".format(branch_name, loss_name),
+                        term_loss.cpu().item())
             loss += loss_weight * term_loss
 
     track_value("overall_loss", loss.cpu().item())
@@ -142,7 +149,8 @@ def valid_step(batch_data, run_info):
     with torch.no_grad():  # dont compute gradient
         pred_dict = model(imgs_gpu)
         pred_dict = OrderedDict(
-            [[k, v.permute(0, 2, 3, 1).contiguous()] for k, v in pred_dict.items()]
+            [[k, v.permute(0, 2, 3, 1).contiguous()]
+             for k, v in pred_dict.items()]
         )
         pred_dict["np"] = F.softmax(pred_dict["np"], dim=-1)[..., 1]
         if model.module.nr_types is not None:
@@ -183,7 +191,8 @@ def infer_step(batch_data, model):
     with torch.no_grad():  # dont compute gradient
         pred_dict = model(patch_imgs_gpu)
         pred_dict = OrderedDict(
-            [[k, v.permute(0, 2, 3, 1).contiguous()] for k, v in pred_dict.items()]
+            [[k, v.permute(0, 2, 3, 1).contiguous()]
+             for k, v in pred_dict.items()]
         )
         pred_dict["np"] = F.softmax(pred_dict["np"], dim=-1)[..., 1:]
         if "tp" in pred_dict:
@@ -210,7 +219,8 @@ def viz_step_output(raw_data, nr_types=None):
     if nr_types is not None:
         true_tp, pred_tp = raw_data["tp"]
 
-    aligned_shape = [list(imgs.shape), list(true_np.shape), list(pred_np.shape)]
+    aligned_shape = [list(imgs.shape), list(
+        true_np.shape), list(pred_np.shape)]
     aligned_shape = np.min(np.array(aligned_shape), axis=0)[1:3]
 
     cmap = plt.get_cmap("jet")
@@ -257,7 +267,6 @@ def viz_step_output(raw_data, nr_types=None):
 
 
 ####
-from itertools import chain
 
 
 def proc_valid_step_output(raw_data, nr_types=None):
@@ -272,7 +281,7 @@ def proc_valid_step_output(raw_data, nr_types=None):
         pred = np.array(pred == label, np.int32)
         inter = (pred * true).sum()
         total = (pred + true).sum()
-        return inter, total
+        return inter, total, true.sum()
 
     over_inter = 0
     over_total = 0
@@ -283,7 +292,7 @@ def proc_valid_step_output(raw_data, nr_types=None):
         patch_prob_np = prob_np[idx]
         patch_true_np = true_np[idx]
         patch_pred_np = np.array(patch_prob_np > 0.5, dtype=np.int32)
-        inter, total = _dice_info(patch_true_np, patch_pred_np, 1)
+        inter, total, _ = _dice_info(patch_true_np, patch_pred_np, 1)
         correct = (patch_pred_np == patch_true_np).sum()
         over_inter += inter
         over_total += total
@@ -301,14 +310,17 @@ def proc_valid_step_output(raw_data, nr_types=None):
         for type_id in range(0, nr_types):
             over_inter = 0
             over_total = 0
+            over_true = 0
             for idx in range(len(raw_data["true_np"])):
                 patch_pred_tp = pred_tp[idx]
                 patch_true_tp = true_tp[idx]
-                inter, total = _dice_info(patch_true_tp, patch_pred_tp, type_id)
+                inter, total, ground = _dice_info(
+                    patch_true_tp, patch_pred_tp, type_id)
                 over_inter += inter
                 over_total += total
+                over_true += ground
             dice_tp = 2 * over_inter / (over_total + 1.0e-8)
-            track_value("tp_dice_%d" % type_id, dice_tp, "scalar")
+            track_value("tp_dice_{}".format(type_id), dice_tp, "scalar")
 
     # * HV regression statistic
     pred_hv = raw_data["pred_hv"]
@@ -332,7 +344,8 @@ def proc_valid_step_output(raw_data, nr_types=None):
     true_hv = np.array([true_hv[idx] for idx in selected_idx])
     prob_np = np.array([prob_np[idx] for idx in selected_idx])
     pred_hv = np.array([pred_hv[idx] for idx in selected_idx])
-    viz_raw_data = {"img": imgs, "np": (true_np, prob_np), "hv": (true_hv, pred_hv)}
+    viz_raw_data = {"img": imgs, "np": (
+        true_np, prob_np), "hv": (true_hv, pred_hv)}
 
     if nr_types is not None:
         true_tp = np.array([true_tp[idx] for idx in selected_idx])

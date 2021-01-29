@@ -72,6 +72,8 @@ import logging
 import os
 import copy
 from docopt import docopt
+import torch
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 #-------------------------------------------------------------------------------------------------------
 

@@ -3,7 +3,7 @@
 Main HoVer-Net training script.
 
 Usage:
-  run_train.py [--gpu=<id>] [--view=<dset>]
+  run_train.py [--gpu=<id>] [--view=<dset>] [--train=<path>] [--val=<path>]
   run_train.py (-h | --help)
   run_train.py --version
 
@@ -12,40 +12,40 @@ Options:
   --version       Show version.
   --gpu=<id>      Comma separated GPU list. [default: 0,1,2,3]
   --view=<dset>   Visualise images after augmentation. Choose 'train' or 'valid'.
+  --train=<path>  Path to the training data
+  --val=<path>    Path to the validation data
 """
 
-import cv2
-
-cv2.setNumThreads(0)
-import argparse
-import glob
-import importlib
-import inspect
-import json
-import os
-import shutil
-
-import matplotlib
-import numpy as np
-import torch
-from docopt import docopt
-from tensorboardX import SummaryWriter
-from torch.nn import DataParallel  # TODO: switch to DistributedDataParallel
-from torch.utils.data import DataLoader
-
-from config import Config
-from dataloader.train_loader import FileLoader
-from misc.utils import rm_n_mkdir
-from run_utils.engine import RunEngine
 from run_utils.utils import (
     check_log_dir,
     check_manual_seed,
     colored,
     convert_pytorch_checkpoint,
 )
+from run_utils.engine import RunEngine
+from misc.utils import rm_n_mkdir
+from dataloader.train_loader import FileLoader
+from config import Config
+from torch.utils.data import DataLoader
+from torch.nn import DataParallel  # TODO: switch to DistributedDataParallel
+from tensorboardX import SummaryWriter
+from docopt import docopt
+import torch
+import numpy as np
+import matplotlib
+import shutil
+import os
+import json
+import inspect
+import importlib
+import glob
+import argparse
+import cv2
+
+cv2.setNumThreads(0)
 
 
-#### have to move outside because of spawn
+# have to move outside because of spawn
 # * must initialize augmentor per worker, else duplicated rng generators may happen
 def worker_init_fn(worker_id):
     # ! to make the seed chain reproducible, must use the torch random, not numpy
@@ -66,9 +66,11 @@ def worker_init_fn(worker_id):
 class TrainManager(Config):
     """Either used to view the dataset or to initialise the main training loop."""
 
-    def __init__(self):
+    def __init__(self, train_dir, valid_dir):
         super().__init__()
-        return
+        self.train_dir = train_dir
+        self.valid_dir = valid_dir
+        # return
 
     ####
     def view_dataset(self, mode="train"):
@@ -91,18 +93,18 @@ class TrainManager(Config):
         # ! Hard assumption on file type
         file_list = []
         if run_mode == "train":
-            data_dir_list = self.train_dir_list
+            data_dir = self.train_dir
         else:
-            data_dir_list = self.valid_dir_list
-        for dir_path in data_dir_list:
-            file_list.extend(glob.glob("%s/*.npy" % dir_path))
+            data_dir = self.valid_dir
+        # for dir_path in data_dir_list:
+        file_list.extend(glob.glob("{}/*.npy".format(data_dir)))
         file_list.sort()  # to always ensure same input ordering
 
         assert len(file_list) > 0, (
-            "No .npy found for `%s`, please check `%s` in `config.py`"
-            % (run_mode, "%s_dir_list" % run_mode)
+            "No .npy found for `{}`, please check `{}` in `config.py`".
+            format(run_mode, "{}_dir_list".format(run_mode))
         )
-        print("Dataset %s: %d" % (run_mode, len(file_list)))
+        print("Dataset {}: {}".format(run_mode, len(file_list)))
         input_dataset = FileLoader(
             file_list,
             mode=run_mode,
@@ -152,12 +154,13 @@ class TrainManager(Config):
                 fold_idx=fold_idx,
             )
         ####
+
         def get_last_chkpt_path(prev_phase_dir, net_name):
             stat_file_path = prev_phase_dir + "/stats.json"
             with open(stat_file_path) as stat_file:
                 info = json.load(stat_file)
             epoch_list = [int(v) for v in info.keys()]
-            last_chkpts_path = "%s/%s_epoch=%d.tar" % (
+            last_chkpts_path = "{}/{}_epoch={}.tar".format(
                 prev_phase_dir,
                 net_name,
                 max(epoch_list),
@@ -181,10 +184,12 @@ class TrainManager(Config):
             if pretrained_path is not None:
                 if pretrained_path == -1:
                     # * depend on logging format so may be broken if logging format has been changed
-                    pretrained_path = get_last_chkpt_path(prev_log_dir, net_name)
+                    pretrained_path = get_last_chkpt_path(
+                        prev_log_dir, net_name)
                     net_state_dict = torch.load(pretrained_path)["desc"]
                 else:
-                    chkpt_ext = os.path.basename(pretrained_path).split(".")[-1]
+                    chkpt_ext = os.path.basename(
+                        pretrained_path).split(".")[-1]
                     if chkpt_ext == "npz":
                         net_state_dict = dict(np.load(pretrained_path))
                         net_state_dict = {
@@ -195,12 +200,14 @@ class TrainManager(Config):
 
                 colored_word = colored(net_name, color="red", attrs=["bold"])
                 print(
-                    "Model `%s` pretrained path: %s" % (colored_word, pretrained_path)
+                    "Model `{}` pretrained path: {}".format(
+                        colored_word, pretrained_path)
                 )
 
                 # load_state_dict returns (missing keys, unexpected keys)
                 net_state_dict = convert_pytorch_checkpoint(net_state_dict)
-                load_feedback = net_desc.load_state_dict(net_state_dict, strict=False)
+                load_feedback = net_desc.load_state_dict(
+                    net_state_dict, strict=False)
                 # * uncomment for your convenience
                 print("Missing Variables: \n", load_feedback[0])
                 print("Detected Unknown Variables: \n", load_feedback[1])
@@ -272,7 +279,7 @@ class TrainManager(Config):
             if len(phase_list) == 1:
                 save_path = self.log_dir
             else:
-                save_path = self.log_dir + "/%02d/" % (phase_idx)
+                save_path = self.log_dir + "/{}/".format(phase_idx)
             self.run_once(
                 phase_info, engine_opt, save_path, prev_log_dir=prev_save_path
             )
@@ -282,7 +289,10 @@ class TrainManager(Config):
 ####
 if __name__ == "__main__":
     args = docopt(__doc__, version="HoVer-Net v1.0")
-    trainer = TrainManager()
+    if args["--train"] and args["--val"]:
+        trainer = TrainManager(args["--train"], args["--val"])
+    else:
+        raise Exception("Input both train path and val path")
 
     if args["--view"] and args["--gpu"]:
         raise Exception("Supply only one of --view and --gpu.")
