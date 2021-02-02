@@ -72,6 +72,7 @@ import logging
 import os
 import copy
 from docopt import docopt
+from pathlib import Path
 import torch
 torch.multiprocessing.set_sharing_strategy('file_system')
 
@@ -171,7 +172,7 @@ if __name__ == '__main__':
 
     if sub_cmd == 'tile':
         from infer.tile import InferManager
-        in_dir = run_args['input_dir']
+        in_dir = Path(run_args['input_dir'])
         print(in_dir)
         for tma_dir in in_dir.glob('*'):
             if tma_dir.is_dir():
