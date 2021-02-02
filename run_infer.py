@@ -171,8 +171,15 @@ if __name__ == '__main__':
 
     if sub_cmd == 'tile':
         from infer.tile import InferManager
-        infer = InferManager(**method_args)
-        infer.process_file_list(run_args)
+        in_dir = run_args['input_dir']
+        print(in_dir)
+        for tma_dir in in_dir.glob('*'):
+            if tma_dir.is_dir():
+                print(str(tma_dir))
+                infer = InferManager(**method_args)
+                run_args['input_dir'] = str(tma_dir)
+                infer.process_file_list(run_args)
+                print('process {} done!'.format(str(tma_dir)))
     else:
         from infer.wsi import InferManager
         infer = InferManager(**method_args)
