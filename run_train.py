@@ -28,7 +28,7 @@ from dataloader.train_loader import FileLoader
 from config import Config
 from torch.utils.data import DataLoader
 # from torch.nn import DataParallel  # TODO: switch to DistributedDataParallel
-import torch.nn.parallel.DistributedDataParallel as DataParallel
+from torch.nn.parallel import DistributedDataParallel
 from tensorboardX import SummaryWriter
 from docopt import docopt
 import torch
@@ -214,7 +214,7 @@ class TrainManager(Config):
                 print("Detected Unknown Variables: \n", load_feedback[1])
 
             # * extremely slow to pass this on DGX with 1 GPU, why (?)
-            net_desc = DataParallel(net_desc)
+            net_desc = DistributedDataParallel(net_desc)
             net_desc = net_desc.to("cuda")
             # print(net_desc) # * dump network definition or not?
             optimizer, optimizer_args = net_info["optimizer"]
