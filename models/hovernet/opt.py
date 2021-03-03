@@ -58,7 +58,7 @@ def get_config(nr_type, mode):
                 },
                 "target_info": {"gen": (gen_targets, {}), "viz": (prep_sample, {})},
                 # engine name : value
-                "batch_size": {"train": 128, "valid": 128, },
+                "batch_size": {"train": 64, "valid": 64, },
                 "nr_epochs": 10,
             },
             {
@@ -91,7 +91,7 @@ def get_config(nr_type, mode):
                     },
                 },
                 "target_info": {"gen": (gen_targets, {}), "viz": (prep_sample, {})},
-                "batch_size": {"train": 128, "valid": 128, },
+                "batch_size": {"train": 64, "valid": 64, },
                 "nr_epochs": 10,
             },
         ],
