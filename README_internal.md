@@ -30,3 +30,11 @@ if run_mode == "train":
 else:
     data_dir = self.valid_dir
 ```
+
+5. Adjust `models/hovernet/opts` for DGX training with smaller epoches (due to large dataset), larger data batch and larger proc threads
+```
+"batch_size": {"train": 128, "valid": 128,}
+"nr_epochs": 10 #for two stages
+"nr_procs": 128 #for train
+"nr_procs": 128 #for val
+```

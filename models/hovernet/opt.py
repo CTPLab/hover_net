@@ -58,8 +58,8 @@ def get_config(nr_type, mode):
                 },
                 "target_info": {"gen": (gen_targets, {}), "viz": (prep_sample, {})},
                 # engine name : value
-                "batch_size": {"train": 64, "valid": 64, },
-                "nr_epochs": 50,
+                "batch_size": {"train": 128, "valid": 128, },
+                "nr_epochs": 10,
             },
             {
                 "run_info": {
@@ -91,8 +91,8 @@ def get_config(nr_type, mode):
                     },
                 },
                 "target_info": {"gen": (gen_targets, {}), "viz": (prep_sample, {})},
-                "batch_size": {"train": 64, "valid": 64,},
-                "nr_epochs": 50,
+                "batch_size": {"train": 128, "valid": 128, },
+                "nr_epochs": 10,
             },
         ],
         # ------------------------------------------------------------------
@@ -103,7 +103,7 @@ def get_config(nr_type, mode):
             "train": {
                 # TODO: align here, file path or what? what about CV?
                 "dataset": "",  # whats about compound dataset ?
-                "nr_procs": 16,  # number of threads for dataloader
+                "nr_procs": 128,  # number of threads for dataloader
                 "run_step": train_step,  # TODO: function name or function variable ?
                 "reset_per_run": False,
                 # callbacks are run according to the list order of the event
@@ -124,7 +124,7 @@ def get_config(nr_type, mode):
             },
             "valid": {
                 "dataset": "",  # whats about compound dataset ?
-                "nr_procs": 8,  # number of threads for dataloader
+                "nr_procs": 128,  # number of threads for dataloader
                 "run_step": valid_step,
                 "reset_per_run": True,  # * to stop aggregating output etc. from last run
                 # callbacks are run according to the list order of the event
