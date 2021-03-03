@@ -42,7 +42,7 @@ def get_config(nr_type, mode):
                             },
                         ],
                         # learning rate scheduler
-                        "lr_scheduler": lambda x: optim.lr_scheduler.StepLR(x, 25),
+                        "lr_scheduler": lambda x: optim.lr_scheduler.StepLR(x, 5),
                         "extra_info": {
                             "loss": {
                                 "np": {"bce": 1, "dice": 1},
@@ -58,7 +58,7 @@ def get_config(nr_type, mode):
                 },
                 "target_info": {"gen": (gen_targets, {}), "viz": (prep_sample, {})},
                 # engine name : value
-                "batch_size": {"train": 64, "valid": 64, },
+                "batch_size": {"train": 96, "valid": 64, },
                 "nr_epochs": 10,
             },
             {
@@ -77,7 +77,7 @@ def get_config(nr_type, mode):
                             },
                         ],
                         # learning rate scheduler
-                        "lr_scheduler": lambda x: optim.lr_scheduler.StepLR(x, 25),
+                        "lr_scheduler": lambda x: optim.lr_scheduler.StepLR(x, 5),
                         "extra_info": {
                             "loss": {
                                 "np": {"bce": 1, "dice": 1},
@@ -91,7 +91,7 @@ def get_config(nr_type, mode):
                     },
                 },
                 "target_info": {"gen": (gen_targets, {}), "viz": (prep_sample, {})},
-                "batch_size": {"train": 64, "valid": 64, },
+                "batch_size": {"train": 96, "valid": 64, },
                 "nr_epochs": 10,
             },
         ],

@@ -27,7 +27,8 @@ from misc.utils import rm_n_mkdir
 from dataloader.train_loader import FileLoader
 from config import Config
 from torch.utils.data import DataLoader
-from torch.nn import DataParallel  # TODO: switch to DistributedDataParallel
+# from torch.nn import DataParallel  # TODO: switch to DistributedDataParallel
+import torch.nn.parallel.DistributedDataParallel as DataParallel
 from tensorboardX import SummaryWriter
 from docopt import docopt
 import torch
