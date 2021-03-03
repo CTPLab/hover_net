@@ -16,6 +16,7 @@ import torch.utils.data as data
 import tqdm
 
 from run_utils.utils import convert_pytorch_checkpoint
+import xml.etree.cElementTree as ET
 
 
 ####
@@ -56,7 +57,7 @@ class InferManager(object):
     def __load_model(self):
         """Create the model, load the checkpoint and define
         associated run steps to process each data batch.
-        
+
         """
         model_desc = import_module("models.hovernet.net_desc")
         model_creator = getattr(model_desc, "create_model")
@@ -88,7 +89,8 @@ class InferManager(object):
                 new_inst_info[info_name] = info_value
             new_dict[int(inst_id)] = new_inst_info
 
-        json_dict = {"mag": mag, "nuc": new_dict}  # to sync the format protocol
+        # to sync the format protocol
+        json_dict = {"mag": mag, "nuc": new_dict}
         with open(path, "w") as handle:
             json.dump(json_dict, handle)
         return new_dict

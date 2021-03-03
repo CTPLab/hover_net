@@ -159,7 +159,7 @@ class InferManager(base.InferManager):
             self.input_dir).glob('**/*ImageActualTif.tif'))
         # file_path_list.sort()  # ensure same order
         assert len(file_path_list) > 0, 'Not Detected Any Files From Path'
-        # rm_n_mkdir(self.output_dir + '/json/')
+        rm_n_mkdir(self.output_dir + '/halo/')
         rm_n_mkdir(self.output_dir + '/npy/')
         rm_n_mkdir(self.output_dir + '/overlay/')
         if self.save_qupath:
@@ -192,8 +192,9 @@ class InferManager(base.InferManager):
                     save_path, nuc_coms_list, nuc_type_list, self.type_info_dict
                 )
 
-            # save_path = "{}/json/{}.json".format(self.output_dir, img_name)
-            # self.__save_json(save_path, inst_info_dict, None)
+            save_path = "{}/halo/{}.annotation".format(
+                self.output_dir, img_name)
+            self.__save_json(save_path, inst_info_dict, None)
             return img_name
 
         def detach_items_of_uid(items_list, uid, nr_expected_items):

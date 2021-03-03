@@ -11,8 +11,19 @@ from scipy.ndimage.morphology import (
 
 from skimage.segmentation import watershed
 from misc.utils import get_bounding_box, remove_small_objects
+import xml.etree.ElementTree as ET
+from xml.dom import minidom
+import xmltodict
 
 import warnings
+
+cell_info = {
+    'Inflammation': [1, [0, 0, 255], '16711680'],  # blue, 16711680
+    'Epithelium': [2, [255, 0, 0], '255'],  # red, 255
+    'Miscellaneous': [3, [255, 0, 255], '16711935'],  # magenta, 16711935
+    'Stroma': [4, [0, 128, 0], '32768'],  # dark green, 32768
+    'Mucin': [5, [0, 255, 255], '16776960'],  # cyan, 16776960
+}
 
 
 def noop(*args, **kargs):
@@ -72,7 +83,7 @@ def __proc_np_hv(pred):
     overall[overall < 0] = 0
 
     dist = (1.0 - overall) * blb
-    ## nuclei values form mountains so inverse to get basins
+    # nuclei values form mountains so inverse to get basins
     dist = -cv2.GaussianBlur(dist, (3, 3), 0)
 
     overall = np.array(overall >= 0.4, dtype=np.int32)
@@ -100,7 +111,7 @@ def process(pred_map, nr_types=None, return_centroids=False):
         overlaid_img: img to overlay the predicted instances upon, `None` means no
         type_colour (dict) : `None` to use random, else overlay instances of a type to colour in the dict
         output_dtype: data type of output
-    
+
     Returns:
         pred_inst:     pixel-wise nuclear instance segmentation prediction
         pred_type_out: pixel-wise nuclear type prediction 
@@ -126,7 +137,7 @@ def process(pred_map, nr_types=None, return_centroids=False):
             rmin, rmax, cmin, cmax = get_bounding_box(inst_map)
             inst_bbox = np.array([[rmin, cmin], [rmax, cmax]])
             inst_map = inst_map[
-                inst_bbox[0][0] : inst_bbox[1][0], inst_bbox[0][1] : inst_bbox[1][1]
+                inst_bbox[0][0]: inst_bbox[1][0], inst_bbox[0][1]: inst_bbox[1][1]
             ]
             inst_map = inst_map.astype(np.uint8)
             inst_moment = cv2.moments(inst_map)
@@ -157,9 +168,20 @@ def process(pred_map, nr_types=None, return_centroids=False):
             }
 
     if nr_types is not None:
-        #### * Get class of each instance id, stored at index id-1
+        # create the skeleton of the xml files
+        annotations = ET.Element('Annotations')
+        ann_list = [None] * len(cell_info.keys())
+        for cell_nm, cell_val in cell_info.items():
+            anno = ET.SubElement(annotations, 'Annotation',
+                                 LineColor=cell_val[2],
+                                 Name=cell_nm,
+                                 Visible='True')
+            ann_list[cell_val[0] - 1] = ET.SubElement(anno, 'Regions')
+
+        # * Get class of each instance id, stored at index id-1
         for inst_id in list(inst_info_dict.keys()):
-            rmin, cmin, rmax, cmax = (inst_info_dict[inst_id]["bbox"]).flatten()
+            rmin, cmin, rmax, cmax = (
+                inst_info_dict[inst_id]["bbox"]).flatten()
             inst_map_crop = pred_inst[rmin:rmax, cmin:cmax]
             inst_type_crop = pred_type[rmin:rmax, cmin:cmax]
             inst_map_crop = (
@@ -177,6 +199,21 @@ def process(pred_map, nr_types=None, return_centroids=False):
             type_prob = type_dict[inst_type] / (np.sum(inst_map_crop) + 1.0e-6)
             inst_info_dict[inst_id]["type"] = int(inst_type)
             inst_info_dict[inst_id]["type_prob"] = float(type_prob)
+
+            region = ET.SubElement(ann_list[int(inst_type) - 1], 'Region',
+                                   Type='Polygon',
+                                   HasEndcaps='0',
+                                   NegativeROA='0')
+            vertices = ET.SubElement(region, 'Vertices')
+            contours = inst_info_dict[inst_id]["contour"]
+            for cid in range(contours.shape[0]):
+                ET.SubElement(vertices, 'V',
+                              X=str(contours[cid, 0]),
+                              Y=str(contours[cid, 1]))
+            ET.SubElement(ann_list[int(inst_type) - 1], 'Comments')
+
+        xmlstr = minidom.parseString(ET.tostring(
+            annotations)).toprettyxml(indent='  ')
 
     # print('here')
     # ! WARNING: ID MAY NOT BE CONTIGUOUS
