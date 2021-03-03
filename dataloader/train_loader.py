@@ -75,7 +75,7 @@ class FileLoader(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         path = self.info_list[idx]
-        data = np.load(path)
+        data = np.load(path, mmap_mode='r')
 
         # split stacked channel into image and label
         img = (data[..., :3]).astype("uint8")  # RGB images
