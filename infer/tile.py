@@ -185,7 +185,7 @@ class InferManager(base.InferManager):
                     save_path, nuc_coms_list, nuc_type_list, self.type_info_dict
                 )
 
-            xml_path = "{}/halo/{}.annotation".format(
+            xml_path = "{}/halo/{}.annotations".format(
                 self.output_dir, img_name)
             with open(str(xml_path), 'w') as f:
                 f.write(xmlstr)
