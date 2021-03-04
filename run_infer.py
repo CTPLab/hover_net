@@ -281,7 +281,7 @@ if __name__ == '__main__':
                 summary_list = list(tma_dir.glob('**/*summary_results.csv*'))
                 summ_dict, annotations = proc_summ(cell_info, summary_list[0])
                 run_args['summ_dict'] = summ_dict
-                run_args['anno'] = annotations
+                run_args['ann_xml'] = annotations
                 run_args['cell_info'] = cell_info
                 run_args['input_dir'] = str(tma_dir)
                 infer = InferManager(**method_args)

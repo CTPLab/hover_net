@@ -339,8 +339,12 @@ class InferManager(base.InferManager):
                 }
 
                 post_proc_kwargs = {
+                    "cell_info": self.cell_info,
+                    "summ_dict": self.summ_dict,
+                    "ann_xml": self.ann_xml,
+                    "tma_name": base_name,
                     "nr_types": self.nr_types,
-                    "return_centroids": True,
+                    "return_centroids": True
                 }  # dynamicalize this
 
                 overlay_kwargs = {

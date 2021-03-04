@@ -102,7 +102,13 @@ def __proc_np_hv(pred):
 
 
 ####
-def process(pred_map, proc_dict, nr_types=None, return_centroids=False):
+def process(pred_map,
+            cell_info,
+            summ_dict,
+            ann_xml,
+            tma_name,
+            nr_types=None,
+            return_centroids=False):
     """Post processing script for image tiles.
 
     Args:
@@ -117,8 +123,6 @@ def process(pred_map, proc_dict, nr_types=None, return_centroids=False):
         pred_type_out: pixel-wise nuclear type prediction 
 
     """
-
-    cell_info = proc_dict['cell_info']
 
     if nr_types is not None:
         pred_type = pred_map[..., :1]

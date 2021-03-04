@@ -16,7 +16,7 @@ from dataloader.augs import fix_mirror_padding
 ####
 def gen_instance_hv_map(ann, crop_shape):
     """Input annotation must be of original shape.
-    
+
     The map is calculated only for instances within the crop portion
     but based on the original shape in original image.
 
@@ -49,13 +49,17 @@ def gen_instance_hv_map(ann, crop_shape):
         inst_box[1] += 2
         inst_box[3] += 2
 
-        inst_map = inst_map[inst_box[0] : inst_box[1], inst_box[2] : inst_box[3]]
+        inst_map = inst_map[inst_box[0]: inst_box[1], inst_box[2]: inst_box[3]]
 
         if inst_map.shape[0] < 2 or inst_map.shape[1] < 2:
             continue
 
         # instance center of mass, rounded to nearest pixel
         inst_com = list(measurements.center_of_mass(inst_map))
+
+        if math.isnan(inst_com[0]) or math.isnan(inst_com[1]):
+            print('the instance center of mass is NaN, ignore.')
+            continue
 
         inst_com[0] = int(inst_com[0] + 0.5)
         inst_com[1] = int(inst_com[1] + 0.5)
@@ -86,10 +90,10 @@ def gen_instance_hv_map(ann, crop_shape):
             inst_y[inst_y > 0] /= np.amax(inst_y[inst_y > 0])
 
         ####
-        x_map_box = x_map[inst_box[0] : inst_box[1], inst_box[2] : inst_box[3]]
+        x_map_box = x_map[inst_box[0]: inst_box[1], inst_box[2]: inst_box[3]]
         x_map_box[inst_map > 0] = inst_x[inst_map > 0]
 
-        y_map_box = y_map[inst_box[0] : inst_box[1], inst_box[2] : inst_box[3]]
+        y_map_box = y_map[inst_box[0]: inst_box[1], inst_box[2]: inst_box[3]]
         y_map_box[inst_map > 0] = inst_y[inst_map > 0]
 
     hv_map = np.dstack([x_map, y_map])
