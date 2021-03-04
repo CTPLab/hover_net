@@ -38,6 +38,7 @@ from docopt import docopt
 import copy
 import os
 import csv
+import json
 import logging
 tile_cli = """
 Arguments for processing tiles.
@@ -78,94 +79,6 @@ options:
     --save_thumb            To save thumb. [default: False]
     --save_mask             To save mask. [default: False]
 """
-
-
-def header_lookup(headers):
-    """The header lookup table. Assign the index for each candidate as follow,
-
-    var_id[patient id] = 0
-    var_id[survival rate] = 1
-
-    Args:
-        headers: the name list of candidate causal variables,
-                    outcome, patien id, etc.
-    """
-
-    var_id = dict()
-
-    for idx, head in enumerate(headers):
-        var_id[head] = idx
-
-    return var_id
-
-
-def proc_summ(cell_info,
-              summ_file,
-              tma_num=2):
-    summ_dict = dict()
-    with open(str(summ_file), 'r') as sfile:
-        summ_reader = csv.reader(sfile, delimiter=',')
-
-        for idx, tma_summ in enumerate(summ_reader):
-            if idx == 0:
-                summ_id = header_lookup(tma_summ)
-                continue
-
-            pat_id = tma_summ[summ_id['Spot Id 1']]
-            pat_valid = tma_summ[summ_id['Spot Valid']]
-            if not (pat_valid == 'true' and pat_id.isdigit()):
-                print('invalid tma of the patient {}, ignore.'.
-                      format(pat_id))
-                continue
-
-            col = 'C' + tma_summ[summ_id['TMA Column']].zfill(2)
-            row = 'R' + tma_summ[summ_id['TMA Row']].zfill(2)
-            left = tma_summ[summ_id['Left(pixels)']]
-            top = tma_summ[summ_id['Top (pixels)']]
-            wid = tma_summ[summ_id['Width (pixels)']]
-            hei = tma_summ[summ_id['Height (pixels)']]
-
-            summ_dict[col+row] = [int(left), int(top),
-                                  int(wid), int(hei), False]
-
-        summ_keys = list(summ_dict.keys())
-        shuffle(summ_keys)
-        for num in range(tma_num):
-            summ_dict[summ_keys[num]][-1] = True
-
-    annotations = ET.Element('Annotations')
-    # create the layer info
-    anno = ET.SubElement(annotations, 'Annotation',
-                         LineColor='65535',
-                         Name="Layer 1",
-                         Visible='True')
-    regions = ET.SubElement(anno, 'Regions')
-    for num in range(tma_num):
-        region = ET.SubElement(regions, 'Region',
-                               Type='Ellipse',
-                               HasEndcaps='0',
-                               NegativeROA='0')
-        vertices = ET.SubElement(region, 'Vertices')
-        left, top, hei, wid, _ = summ_dict[summ_keys[num]]
-
-        ET.SubElement(vertices, 'V',
-                      X=str(left),
-                      Y=str(top))
-        ET.SubElement(vertices, 'V',
-                      X=str(left + wid),
-                      Y=str(top + hei))
-        ET.SubElement(region, 'Comments')
-    # create the skeleton for cell type
-    ann_list = [None] * len(cell_info.keys())
-    for cell_nm, cell_val in cell_info.items():
-        anno = ET.SubElement(annotations, 'Annotation',
-                             LineColor=cell_val[2],
-                             Name=cell_nm,
-                             Visible='True')
-        ann_list[cell_val[0] - 1] = ET.SubElement(anno, 'Regions')
-
-    return summ_dict, annotations
-
 
 torch.multiprocessing.set_sharing_strategy('file_system')
 # -------------------------------------------------------------------------------------------------------
@@ -245,6 +158,11 @@ if __name__ == '__main__':
             'save_qupath': sub_args['save_qupath'],
             'save_raw_map': sub_args['save_raw_map'],
         })
+        in_dir = Path(run_args['input_dir'])
+        with open(str(in_dir / 'hover_data.json'), 'r') as hfile:
+            hover_dict = json.load(hfile)
+        run_args['tma_num'] = 2
+        run_args['cell_info'] = cell_info
 
     if sub_cmd == 'wsi':
         run_args.update({
@@ -274,19 +192,11 @@ if __name__ == '__main__':
 
     if sub_cmd == 'tile':
         from infer.tile import InferManager
-        in_dir = Path(run_args['input_dir'])
-        for tma_dir in in_dir.glob('*'):
-            if tma_dir.is_dir():
-                print(str(tma_dir))
-                summary_list = list(tma_dir.glob('**/*summary_results.csv*'))
-                summ_dict, annotations = proc_summ(cell_info, summary_list[0])
-                run_args['summ_dict'] = summ_dict
-                run_args['ann_xml'] = annotations
-                run_args['cell_info'] = cell_info
-                run_args['input_dir'] = str(tma_dir)
-                infer = InferManager(**method_args)
-                infer.process_file_list(run_args)
-                print('process {} done!'.format(str(tma_dir)))
+        for hover_key, hover_tma in hover_dict.items():
+            run_args['tma_slide'] = hover_tma
+            infer = InferManager(**method_args)
+            infer.process_file_list(run_args)
+            print('process {} done!'.format(str(hover_key)))
     else:
         from infer.wsi import InferManager
         infer = InferManager(**method_args)

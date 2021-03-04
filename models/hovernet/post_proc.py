@@ -101,12 +101,44 @@ def __proc_np_hv(pred):
     return proced_pred
 
 
+def __create_xml(pos_info, cell_info):
+    annotations = ET.Element('Annotations')
+    # create the layer info
+    anno = ET.SubElement(annotations, 'Annotation',
+                         LineColor='65535',
+                         Name='Layer 1',
+                         Visible='True')
+    regions = ET.SubElement(anno, 'Regions')
+    region = ET.SubElement(regions, 'Region',
+                           Type='Ellipse',
+                           HasEndcaps='0',
+                           NegativeROA='0')
+    vertices = ET.SubElement(region, 'Vertices')
+
+    left, top, wid, hei = pos_info
+    ET.SubElement(vertices, 'V',
+                  X=str(left),
+                  Y=str(top))
+    ET.SubElement(vertices, 'V',
+                  X=str(left + wid),
+                  Y=str(top + hei))
+    ET.SubElement(region, 'Comments')
+
+    cell_list = [None] * len(cell_info.keys())
+    for cell_nm, cell_val in cell_info.items():
+        cell = ET.SubElement(annotations, 'Annotation',
+                             LineColor=cell_val[2],
+                             Name=cell_nm,
+                             Visible='True')
+        cell_list[cell_val[0] - 1] = ET.SubElement(cell, 'Regions')
+
+    return annotations, cell_list
+
+
 ####
 def process(pred_map,
             cell_info,
-            summ_dict,
-            ann_xml,
-            tma_name,
+            pos_info,
             nr_types=None,
             return_centroids=False):
     """Post processing script for image tiles.
@@ -123,6 +155,8 @@ def process(pred_map,
         pred_type_out: pixel-wise nuclear type prediction 
 
     """
+
+    left, top, wid, hei = pos_info
 
     if nr_types is not None:
         pred_type = pred_map[..., :1]
@@ -162,10 +196,10 @@ def process(pred_map,
                 (inst_moment["m01"] / inst_moment["m00"]),
             ]
             inst_centroid = np.array(inst_centroid)
-            inst_contour[:, 0] += inst_bbox[0][1]  # X
-            inst_contour[:, 1] += inst_bbox[0][0]  # Y
-            inst_centroid[0] += inst_bbox[0][1]  # X
-            inst_centroid[1] += inst_bbox[0][0]  # Y
+            inst_contour[:, 0] += (inst_bbox[0][1] + left)  # X
+            inst_contour[:, 1] += (inst_bbox[0][0] + top)  # Y
+            inst_centroid[0] += (inst_bbox[0][1] + left)  # X
+            inst_centroid[1] += (inst_bbox[0][0] + top)  # Y
             inst_info_dict[inst_id] = {  # inst_id should start at 1
                 "bbox": inst_bbox,
                 "centroid": inst_centroid,
@@ -176,14 +210,8 @@ def process(pred_map,
 
     if nr_types is not None:
         # create the skeleton of the xml files
-        annotations = ET.Element('Annotations')
-        ann_list = [None] * len(cell_info.keys())
-        for cell_nm, cell_val in cell_info.items():
-            anno = ET.SubElement(annotations, 'Annotation',
-                                 LineColor=cell_val[2],
-                                 Name=cell_nm,
-                                 Visible='True')
-            ann_list[cell_val[0] - 1] = ET.SubElement(anno, 'Regions')
+        print(nr_types)
+        annotations, ann_list = __create_xml(pos_info, cell_info)
 
         # * Get class of each instance id, stored at index id-1
         for inst_id in list(inst_info_dict.keys()):
@@ -207,22 +235,25 @@ def process(pred_map,
             inst_info_dict[inst_id]["type"] = int(inst_type)
             inst_info_dict[inst_id]["type_prob"] = float(type_prob)
 
-            region = ET.SubElement(ann_list[int(inst_type) - 1], 'Region',
-                                   Type='Polygon',
-                                   HasEndcaps='0',
-                                   NegativeROA='0')
-            vertices = ET.SubElement(region, 'Vertices')
-            contours = inst_info_dict[inst_id]["contour"]
-            for cid in range(contours.shape[0]):
-                ET.SubElement(vertices, 'V',
-                              X=str(contours[cid, 0]),
-                              Y=str(contours[cid, 1]))
-            ET.SubElement(ann_list[int(inst_type) - 1], 'Comments')
+            if inst_type > 0:
+                region = ET.SubElement(ann_list[inst_type - 1], 'Region',
+                                       Type='Polygon',
+                                       HasEndcaps='0',
+                                       NegativeROA='0')
+                vertices = ET.SubElement(region, 'Vertices')
+                contours = inst_info_dict[inst_id]["contour"]
+                for cid in range(contours.shape[0]):
+                    ET.SubElement(vertices, 'V',
+                                  X=str(contours[cid, 0]),
+                                  Y=str(contours[cid, 1]))
+                ET.SubElement(region, 'Comments')
 
         xmlstr = minidom.parseString(ET.tostring(
             annotations)).toprettyxml(indent='  ')
+        # print(xmlstr)
+        # xmlstr = ''
 
     # print('here')
     # ! WARNING: ID MAY NOT BE CONTIGUOUS
     # inst_id in the dict maps to the same value in the `pred_inst`
-    return pred_inst, inst_info_dict
+    return pred_inst, inst_info_dict, xmlstr

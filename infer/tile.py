@@ -11,6 +11,7 @@ from misc.utils import (
     rm_n_mkdir,
 )
 from dataloader.infer_loader import SerializeArray, SerializeFileList
+from random import shuffle
 import tqdm
 import torch.utils.data as data
 import torch
@@ -132,13 +133,14 @@ def _post_process_patches(
     # * a prediction map with instance of ID 1-N
     # * and a dict contain the instance info, access via its ID
     # * each instance may have type
-    pred_inst, inst_info_dict = post_proc_func(pred_map, **post_proc_kwargs)
+    pred_inst, inst_info_dict, xmlstr = post_proc_func(
+        pred_map, **post_proc_kwargs)
 
     overlaid_img = visualize_instances_dict(
         src_image.copy(), inst_info_dict, **overlay_kwargs
     )
 
-    return image_info["name"], pred_map, pred_inst, inst_info_dict, overlaid_img
+    return image_info["name"], pred_map, pred_inst, inst_info_dict, xmlstr, overlaid_img
 
 
 class InferManager(base.InferManager):
@@ -155,15 +157,6 @@ class InferManager(base.InferManager):
         # * depend on the number of samples and their size, this may be less efficient
         def patterning(x):
             return re.sub("([\[\]])", "[\\1]", x)
-        file_path_list = list(pathlib.Path(
-            self.input_dir).glob('**/*ImageActualTif.tif'))
-        # file_path_list.sort()  # ensure same order
-        assert len(file_path_list) > 0, 'Not Detected Any Files From Path'
-        rm_n_mkdir(self.output_dir + '/halo/')
-        rm_n_mkdir(self.output_dir + '/npy/')
-        rm_n_mkdir(self.output_dir + '/overlay/')
-        if self.save_qupath:
-            rm_n_mkdir(self.output_dir + "/qupath/")
 
         def proc_callback(results):
             """Post processing callback.
@@ -171,7 +164,7 @@ class InferManager(base.InferManager):
             Output format is implicit assumption, taken from `_post_process_patches`
 
             """
-            img_name, pred_map, pred_inst, inst_info_dict, overlaid_img = results
+            img_name, pred_map, pred_inst, inst_info_dict, xmlstr, overlaid_img = results
 
             pred_type = [[k, v["type"]] for k, v in inst_info_dict.items()]
             pred_type = np.array(pred_type)
@@ -192,9 +185,10 @@ class InferManager(base.InferManager):
                     save_path, nuc_coms_list, nuc_type_list, self.type_info_dict
                 )
 
-            save_path = "{}/halo/{}.annotation".format(
+            xml_path = "{}/halo/{}.annotation".format(
                 self.output_dir, img_name)
-            self.__save_json(save_path, inst_info_dict, None)
+            with open(str(xml_path), 'w') as f:
+                f.write(xmlstr)
             return img_name
 
         def detach_items_of_uid(items_list, uid, nr_expected_items):
@@ -215,12 +209,24 @@ class InferManager(base.InferManager):
             remained_items_list = remained_items_list + items_list
             return detached_items_list, remained_items_list
 
+        file_info_list = list(run_args['tma_slide'].values())
+        shuffle(file_info_list)
+        file_info_list = file_info_list[:run_args['tma_num']]
+        print(file_info_list)
+        assert len(file_info_list) > 0, 'Not Detected Any Files From Path'
+
+        rm_n_mkdir(self.output_dir + '/halo/')
+        rm_n_mkdir(self.output_dir + '/npy/')
+        rm_n_mkdir(self.output_dir + '/overlay/')
+        if self.save_qupath:
+            rm_n_mkdir(self.output_dir + "/qupath/")
+
         proc_pool = None
         future_list = []
         if self.nr_post_proc_workers > 0:
             proc_pool = ProcessPoolExecutor(self.nr_post_proc_workers)
 
-        while len(file_path_list) > 0:
+        while len(file_info_list) > 0:
 
             hardware_stats = psutil.virtual_memory()
             available_ram = getattr(hardware_stats, "available")
@@ -238,17 +244,12 @@ class InferManager(base.InferManager):
             cache_image_list = []
             cache_patch_info_list = []
             cache_image_info_list = []
-            while len(file_path_list) > 0:
-                file_path = str(file_path_list.pop(0))
-
+            while len(file_info_list) > 0:
+                file_info = file_info_list.pop(0)
+                file_path = file_info[-1]
+                print(file_path)
                 img = cv2.imread(file_path)
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                # no need to resize the image
-                # if we train and test on the same SCRC
-                # downscale is meant for train on ConSep
-                # and test on SCRC
-                # h, w, c = img.shape
-                # img = cv2.resize(img, (h // 2, w // 2))
                 src_shape = img.shape
 
                 img, patch_info, top_corner = _prepare_patching(
@@ -269,13 +270,12 @@ class InferManager(base.InferManager):
                     break
 
                 file_idx += 1
-                # if file_idx == 4: break
                 use_path_list.append(file_path)
                 cache_image_list.append(img)
                 cache_patch_info_list.extend(patch_info)
                 # TODO: refactor to explicit protocol
                 cache_image_info_list.append(
-                    [src_shape, len(patch_info), top_corner])
+                    [src_shape, len(patch_info), top_corner, file_info[:4]])
 
             # * apply neural net on cached data
             dataset = SerializeFileList(
@@ -340,9 +340,7 @@ class InferManager(base.InferManager):
 
                 post_proc_kwargs = {
                     "cell_info": self.cell_info,
-                    "summ_dict": self.summ_dict,
-                    "ann_xml": self.ann_xml,
-                    "tma_name": base_name,
+                    "pos_info": image_info[-1],
                     "nr_types": self.nr_types,
                     "return_centroids": True
                 }  # dynamicalize this
@@ -350,8 +348,9 @@ class InferManager(base.InferManager):
                 overlay_kwargs = {
                     "draw_dot": self.draw_dot,
                     "type_colour": self.type_info_dict,
-                    "line_thickness": 1,
+                    "line_thickness": 2,
                 }
+
                 func_args = (
                     self.post_proc_func,
                     post_proc_kwargs,
