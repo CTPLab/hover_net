@@ -36,6 +36,10 @@ import argparse
 import logging
 import multiprocessing
 from multiprocessing import Lock, Pool
+import xml.etree.ElementTree as ET
+from xml.dom import minidom
+import xmltodict
+from pathlib import Path
 
 # ! must be at top for VScode debugging
 multiprocessing.set_start_method("spawn", True)
@@ -146,6 +150,159 @@ def _post_process_patches(
 class InferManager(base.InferManager):
     """Run inference on tiles."""
 
+    def _tma_to_slide(self):
+
+        ann_dir = Path(self.output_dir) / \
+            'json' / self.slide_nm
+        ann_list = list(ann_dir.glob('*.json'))
+        shuffle(ann_list)
+
+        annotations = ET.Element('Annotations')
+        # create the skeleton of layer info
+        anno = ET.SubElement(annotations, 'Annotation',
+                             LineColor='65535',
+                             Name='Layer 1',
+                             Visible='True')
+        regions = ET.SubElement(anno, 'Regions')
+
+        # create the skeleton of cell info
+        cell_list = [None] * len(self.cell_info.keys())
+        for cell_nm, cell_val in self.cell_info.items():
+            cell = ET.SubElement(annotations, 'Annotation',
+                                 LineColor=cell_val[2],
+                                 Name=cell_nm,
+                                 Visible='True')
+            cell_list[cell_val[0] - 1] = ET.SubElement(cell, 'Regions')
+
+        # create the layer information
+        for ann_id, ann in enumerate(ann_list):
+            if ann_id < self.tma_num:
+                print(ann)
+                ann_nm = ann.stem
+                col_row = ann_nm.split('_')[-2]
+                left, top, wid, hei = self.tma_slide[col_row][:4]
+
+                region = ET.SubElement(regions, 'Region',
+                                       Type='Ellipse',
+                                       HasEndcaps='0',
+                                       NegativeROA='0')
+                vertices = ET.SubElement(region, 'Vertices')
+
+                ET.SubElement(vertices, 'V',
+                              X=str(left),
+                              Y=str(top))
+                ET.SubElement(vertices, 'V',
+                              X=str(left + wid),
+                              Y=str(top + hei))
+                ET.SubElement(region, 'Comments')
+
+        # create cell level information
+        # this loop is little redundant,
+        # could be optimized.
+        for ann_id, ann in enumerate(ann_list):
+            if ann_id < self.tma_num:
+                print(ann)
+                ann_nm = ann.stem
+                col_row = ann_nm.split('_')[-2]
+                left, top, wid, hei = self.tma_slide[col_row][:4]
+
+                with open(str(ann), 'r') as afile:
+                    ann_dict = json.load(afile)
+                    for _, ann_val in ann_dict['nuc'].items():
+                        inst_type = ann_val['type']
+                        if inst_type > 0:
+                            region = ET.SubElement(cell_list[inst_type - 1], 'Region',
+                                                   Type='Polygon',
+                                                   HasEndcaps='0',
+                                                   NegativeROA='0')
+                            vertices = ET.SubElement(region, 'Vertices')
+                            contours = ann_val['contour']
+                            for cntr in contours:
+                                # rotate -90 w.r.t image center
+                                # Version 1: could be right
+                                cx = (wid - hei) // 2 + cntr[1] + left
+                                cy = (wid + hei) // 2 - cntr[0] + top
+                                ET.SubElement(vertices, 'V',
+                                              X=str(cx),
+                                              Y=str(cy))
+                            ET.SubElement(region, 'Comments')
+        xmlstr = minidom.parseString(ET.tostring(
+            annotations)).toprettyxml(indent='  ')
+
+        xml_path = "{}/halo/{}.annotations".format(
+            self.output_dir, self.slide_nm)
+        with open(str(xml_path), 'w') as f:
+            f.write(xmlstr)
+        return
+
+    def _mkdir(self):
+        for fld in ('halo', 'json', 'npy', 'overlay', 'qupath'):
+            out_dir = Path(self.output_dir) / \
+                fld / self.slide_nm
+            rm_n_mkdir(str(out_dir))
+
+    def _proc_callback(self, results):
+        """Post processing callback.
+
+            Output format is implicit assumption, taken from `_post_process_patches`
+
+            """
+        img_name, pred_map, pred_inst, inst_info_dict, xmlstr, overlaid_img = results
+
+        pred_type = [[k, v["type"]] for k, v in inst_info_dict.items()]
+        pred_type = np.array(pred_type)
+
+        xml_path = "{}/halo/{}/{}.annotations".format(
+            self.output_dir, self.slide_nm, img_name)
+        with open(str(xml_path), 'w') as f:
+            f.write(xmlstr)
+
+        json_path = "{}/json/{}/{}.json".format(
+            self.output_dir, self.slide_nm, img_name)
+        self.__save_json(json_path, inst_info_dict, None)
+
+        # inst_path = "{}/npy/{}/{}_inst.npy".format(
+        #     self.output_dir, self.slide_nm, img_name)
+        # np.save(inst_path, pred_inst)
+
+        type_path = "{}/npy/{}/{}_type.npy".format(
+            self.output_dir, self.slide_nm, img_name)
+        np.save(type_path, pred_type)
+
+        if self.save_qupath:
+            nuc_val_list = list(inst_info_dict.values())
+
+            nuc_type_list = np.array([v["type"] for v in nuc_val_list])
+            nuc_coms_list = np.array([v["centroid"] for v in nuc_val_list])
+            save_path = "{}/qupath/{}/{}.tsv".format(
+                self.output_dir, self.slide_nm, img_name)
+            convert_format.to_qupath(
+                save_path, nuc_coms_list, nuc_type_list, self.type_info_dict
+            )
+
+        return img_name
+
+    def _detach_items_of_uid(self,
+                             items_list,
+                             uid,
+                             nr_expected_items):
+        item_counter = 0
+        detached_items_list = []
+        remained_items_list = []
+        while True:
+            pinfo, pdata = items_list.pop(0)
+            pinfo = np.squeeze(pinfo)
+            if pinfo[-1] == uid:
+                detached_items_list.append([pinfo, pdata])
+                item_counter += 1
+            else:
+                remained_items_list.append([pinfo, pdata])
+            if item_counter == nr_expected_items:
+                break
+        # do this to ensure the ordering
+        remained_items_list = remained_items_list + items_list
+        return detached_items_list, remained_items_list
+
     ####
     def process_file_list(self, run_args):
         """
@@ -154,72 +311,13 @@ class InferManager(base.InferManager):
         for variable, value in run_args.items():
             self.__setattr__(variable, value)
 
-        # * depend on the number of samples and their size, this may be less efficient
-        def patterning(x):
-            return re.sub("([\[\]])", "[\\1]", x)
-
-        def proc_callback(results):
-            """Post processing callback.
-
-            Output format is implicit assumption, taken from `_post_process_patches`
-
-            """
-            img_name, pred_map, pred_inst, inst_info_dict, xmlstr, overlaid_img = results
-
-            pred_type = [[k, v["type"]] for k, v in inst_info_dict.items()]
-            pred_type = np.array(pred_type)
-
-            inst_path = "{}/npy/{}_inst.npy".format(self.output_dir, img_name)
-            np.save(inst_path, pred_inst)
-            type_path = "{}/npy/{}_type.npy".format(self.output_dir, img_name)
-            np.save(type_path, pred_type)
-
-            if self.save_qupath:
-                nuc_val_list = list(inst_info_dict.values())
-
-                nuc_type_list = np.array([v["type"] for v in nuc_val_list])
-                nuc_coms_list = np.array([v["centroid"] for v in nuc_val_list])
-                save_path = "{}/qupath/{}.tsv".format(
-                    self.output_dir, img_name)
-                convert_format.to_qupath(
-                    save_path, nuc_coms_list, nuc_type_list, self.type_info_dict
-                )
-
-            xml_path = "{}/halo/{}.annotations".format(
-                self.output_dir, img_name)
-            with open(str(xml_path), 'w') as f:
-                f.write(xmlstr)
-            return img_name
-
-        def detach_items_of_uid(items_list, uid, nr_expected_items):
-            item_counter = 0
-            detached_items_list = []
-            remained_items_list = []
-            while True:
-                pinfo, pdata = items_list.pop(0)
-                pinfo = np.squeeze(pinfo)
-                if pinfo[-1] == uid:
-                    detached_items_list.append([pinfo, pdata])
-                    item_counter += 1
-                else:
-                    remained_items_list.append([pinfo, pdata])
-                if item_counter == nr_expected_items:
-                    break
-            # do this to ensure the ordering
-            remained_items_list = remained_items_list + items_list
-            return detached_items_list, remained_items_list
+        self._mkdir()
 
         file_info_list = list(run_args['tma_slide'].values())
         shuffle(file_info_list)
-        file_info_list = file_info_list[:run_args['tma_num']]
+        file_info_list = file_info_list[:self.tma_num + 2]
         print(file_info_list)
         assert len(file_info_list) > 0, 'Not Detected Any Files From Path'
-
-        rm_n_mkdir(self.output_dir + '/halo/')
-        rm_n_mkdir(self.output_dir + '/npy/')
-        rm_n_mkdir(self.output_dir + '/overlay/')
-        if self.save_qupath:
-            rm_n_mkdir(self.output_dir + "/qupath/")
 
         proc_pool = None
         future_list = []
@@ -247,7 +345,6 @@ class InferManager(base.InferManager):
             while len(file_info_list) > 0:
                 file_info = file_info_list.pop(0)
                 file_path = file_info[-1]
-                print(file_path)
                 img = cv2.imread(file_path)
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                 src_shape = img.shape
@@ -318,7 +415,7 @@ class InferManager(base.InferManager):
             # * parallely assemble the processed cache data for each file if possible
             for file_idx, file_path in enumerate(use_path_list):
                 image_info = cache_image_info_list[file_idx]
-                file_ouput_data, accumulated_patch_output = detach_items_of_uid(
+                file_ouput_data, accumulated_patch_output = self._detach_items_of_uid(
                     accumulated_patch_output, file_idx, image_info[1]
                 )
 
@@ -331,7 +428,7 @@ class InferManager(base.InferManager):
                     src_pos[1]: src_pos[1] + image_info[0][1],
                 ]
 
-                base_name = pathlib.Path(file_path).stem
+                base_name = Path(file_path).stem
                 file_info = {
                     "src_shape": image_info[0],
                     "src_image": src_image,
@@ -368,7 +465,7 @@ class InferManager(base.InferManager):
                     future_list.append(proc_future)
                 else:
                     proc_output = _post_process_patches(*func_args)
-                    proc_callback(proc_output)
+                    self._proc_callback(proc_output)
 
         if proc_pool is not None:
             # loop over all to check state a.k.a polling
@@ -384,6 +481,11 @@ class InferManager(base.InferManager):
                     #     future.cancel()
                     # break
                 else:
-                    file_path = proc_callback(future.result())
+                    file_path = self._proc_callback(future.result())
                     log_info("Done Assembling {}".format(file_path))
+
+        print('Merging {} tma to slides ......'.format(self.tma_num))
+        self._tma_to_slide()
+        print('Done merging !')
+
         return

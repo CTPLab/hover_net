@@ -2,7 +2,7 @@ python run_infer.py \
 --gpu='0' \
 --nr_types=6 \
 --type_info_path=type_info.json \
---batch_size=32 \
+--batch_size=16 \
 --model_mode=fast \
 --model_path=/home/histopath/Github/hover_net/logs/0/net_epoch=1.tar \
 --nr_inference_workers=16 \

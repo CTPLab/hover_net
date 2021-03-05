@@ -196,10 +196,10 @@ def process(pred_map,
                 (inst_moment["m01"] / inst_moment["m00"]),
             ]
             inst_centroid = np.array(inst_centroid)
-            inst_contour[:, 0] += (inst_bbox[0][1] + left)  # X
-            inst_contour[:, 1] += (inst_bbox[0][0] + top)  # Y
-            inst_centroid[0] += (inst_bbox[0][1] + left)  # X
-            inst_centroid[1] += (inst_bbox[0][0] + top)  # Y
+            inst_contour[:, 0] += inst_bbox[0][1]  # X
+            inst_contour[:, 1] += inst_bbox[0][0]  # Y
+            inst_centroid[0] += inst_bbox[0][1]  # X
+            inst_centroid[1] += inst_bbox[0][0]  # Y
             inst_info_dict[inst_id] = {  # inst_id should start at 1
                 "bbox": inst_bbox,
                 "centroid": inst_centroid,
@@ -243,9 +243,16 @@ def process(pred_map,
                 vertices = ET.SubElement(region, 'Vertices')
                 contours = inst_info_dict[inst_id]["contour"]
                 for cid in range(contours.shape[0]):
+                    # rotate -90 w.r.t image center
+                    # Version 1: could be right
+                    cx = (wid - hei) // 2 + contours[cid, 1] + left
+                    cy = (wid + hei) // 2 - contours[cid, 0] + top
+                    # Version 3:
+                    # cx = contours[cid, 0] + top
+                    # cy = contours[cid, 1] + left
                     ET.SubElement(vertices, 'V',
-                                  X=str(contours[cid, 0]),
-                                  Y=str(contours[cid, 1]))
+                                  X=str(cx),
+                                  Y=str(cy))
                 ET.SubElement(region, 'Comments')
 
         xmlstr = minidom.parseString(ET.tostring(

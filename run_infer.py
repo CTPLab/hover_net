@@ -161,7 +161,7 @@ if __name__ == '__main__':
         in_dir = Path(run_args['input_dir'])
         with open(str(in_dir / 'hover_data.json'), 'r') as hfile:
             hover_dict = json.load(hfile)
-        run_args['tma_num'] = 2
+        run_args['tma_num'] = 4
         run_args['cell_info'] = cell_info
 
     if sub_cmd == 'wsi':
@@ -192,8 +192,13 @@ if __name__ == '__main__':
 
     if sub_cmd == 'tile':
         from infer.tile import InferManager
-        for hover_key, hover_tma in hover_dict.items():
+        hover_keys = list(hover_dict.keys())
+        shuffle(hover_keys)
+        for hover_key in hover_keys:
+            hover_tma = hover_dict[hover_key]
+        # for hover_key, hover_tma in hover_dict.items():
             run_args['tma_slide'] = hover_tma
+            run_args['slide_nm'] = hover_key
             infer = InferManager(**method_args)
             infer.process_file_list(run_args)
             print('process {} done!'.format(str(hover_key)))
