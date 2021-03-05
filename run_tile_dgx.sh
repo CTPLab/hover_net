@@ -8,6 +8,6 @@ python run_infer.py \
 --nr_inference_workers=32 \
 --nr_post_proc_workers=32 \
 tile \
---input_dir=/raid/jiqing/Data/SCRC/TMA_spots/ \
+--input_dir=/raid/jiqing/Data/SCRC/ \
 --output_dir=/raid/jiqing/Data/SCRC_pred/ \
 
