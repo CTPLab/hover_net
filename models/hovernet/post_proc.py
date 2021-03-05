@@ -107,7 +107,7 @@ def __create_xml(pos_info, cell_info):
     anno = ET.SubElement(annotations, 'Annotation',
                          LineColor='65535',
                          Name='Layer 1',
-                         Visible='True')
+                         Visible='False')
     regions = ET.SubElement(anno, 'Regions')
     region = ET.SubElement(regions, 'Region',
                            Type='Ellipse',

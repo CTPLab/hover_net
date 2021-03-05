@@ -162,7 +162,7 @@ class InferManager(base.InferManager):
         anno = ET.SubElement(annotations, 'Annotation',
                              LineColor='65535',
                              Name='Layer 1',
-                             Visible='True')
+                             Visible='False')
         regions = ET.SubElement(anno, 'Regions')
 
         # create the skeleton of cell info
@@ -315,8 +315,8 @@ class InferManager(base.InferManager):
 
         file_info_list = list(run_args['tma_slide'].values())
         shuffle(file_info_list)
-        file_info_list = file_info_list[:self.tma_num + 2]
-        print(file_info_list)
+        # file_info_list = file_info_list[:self.tma_num + 2]
+        # print(file_info_list)
         assert len(file_info_list) > 0, 'Not Detected Any Files From Path'
 
         proc_pool = None

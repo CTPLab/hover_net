@@ -161,7 +161,7 @@ if __name__ == '__main__':
         in_dir = Path(run_args['input_dir'])
         with open(str(in_dir / 'hover_data.json'), 'r') as hfile:
             hover_dict = json.load(hfile)
-        run_args['tma_num'] = 4
+        run_args['tma_num'] = 16
         run_args['cell_info'] = cell_info
 
     if sub_cmd == 'wsi':
