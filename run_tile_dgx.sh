@@ -5,8 +5,8 @@ python run_infer.py \
 --batch_size=32 \
 --model_mode=fast \
 --model_path=/raid/jiqing/Github/hover_net/logs/1/net_epoch=4.tar \
---nr_inference_workers=32 \
---nr_post_proc_workers=32 \
+--nr_inference_workers=16 \
+--nr_post_proc_workers=16 \
 tile \
 --input_dir=/raid/jiqing/Data/SCRC/ \
 --output_dir=/raid/jiqing/Data/SCRC_pred/ \
