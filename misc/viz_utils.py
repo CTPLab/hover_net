@@ -6,6 +6,7 @@ import numpy as np
 import itertools
 import matplotlib.pyplot as plt
 from matplotlib import cm
+from PIL import Image
 
 from .utils import get_bounding_box
 
@@ -92,7 +93,8 @@ def visualize_instances_map(
 
 ####
 def visualize_instances_dict(
-    input_image, inst_dict, draw_dot=False, type_colour=None, line_thickness=2
+    input_image, inst_dict, draw_dot=False, type_colour=None, line_thickness=2,
+    gt_image=None
 ):
     """Overlays segmentation results (dictionary) on image as contours.
 
@@ -103,6 +105,7 @@ def visualize_instances_dict(
         type_colour: a dict of {type_id : (type_name, colour)} , 
                      `type_id` is from 0-N and `colour` is a tuple of (R, G, B)
         line_thickness: line thickness of contours
+        gt_image: image with ground-truth masks
     """
     overlay = np.copy((input_image))
 
@@ -122,6 +125,16 @@ def visualize_instances_dict(
             inst_centroid = inst_info["centroid"]
             inst_centroid = tuple([int(v) for v in inst_centroid])
             overlay = cv2.circle(overlay, inst_centroid, 3, (255, 0, 0), -1)
+
+    if gt_image is not None:
+        gt = Image.open(str(gt_image))
+        gt_np = np.asarray(gt.convert('RGB'))
+        if overlay.shape != gt_np.shape:
+            print('the pred- and gt-image have different shapes {}, {}, ignore.'. \
+                format(overlay.shape, gt_np.shape))
+        else:
+            overlay = np.concatenate((overlay, gt_np), axis=1)
+
     return overlay
 
 

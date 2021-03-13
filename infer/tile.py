@@ -1,4 +1,5 @@
 from . import base
+from PIL import Image
 import convert_format
 from skimage import color
 from misc.viz_utils import colorize, visualize_instances_dict
@@ -261,13 +262,21 @@ class InferManager(base.InferManager):
             self.output_dir, self.slide_nm, img_name)
         self.__save_json(json_path, inst_info_dict, None)
 
-        # inst_path = "{}/npy/{}/{}_inst.npy".format(
-        #     self.output_dir, self.slide_nm, img_name)
-        # np.save(inst_path, pred_inst)
+        inst_path = "{}/npy/{}/{}_inst.npy".format(
+            self.output_dir, self.slide_nm, img_name)
+        np.save(inst_path, pred_inst)
 
         type_path = "{}/npy/{}/{}_type.npy".format(
             self.output_dir, self.slide_nm, img_name)
         np.save(type_path, pred_type)
+
+        olay_path = "{}/overlay/{}/{}_overlay.jpg".format(
+            self.output_dir, self.slide_nm, img_name)
+        olay_r, olay_c, _ = overlaid_img.shape
+        olay_img = Image.fromarray(np.uint8(overlaid_img)). \
+            convert('RGB')
+        olay_img.resize((olay_r // 2, olay_c // 2))
+        olay_img.save(olay_path, 'JPEG')
 
         if self.save_qupath:
             nuc_val_list = list(inst_info_dict.values())
@@ -344,8 +353,9 @@ class InferManager(base.InferManager):
             cache_image_info_list = []
             while len(file_info_list) > 0:
                 file_info = file_info_list.pop(0)
+                in_path, gt_path = file_info[-2:]
                 file_path = file_info[-1]
-                img = cv2.imread(file_path)
+                img = cv2.imread(in_path)
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                 src_shape = img.shape
 
@@ -367,7 +377,7 @@ class InferManager(base.InferManager):
                     break
 
                 file_idx += 1
-                use_path_list.append(file_path)
+                use_path_list.append([in_path, gt_path])
                 cache_image_list.append(img)
                 cache_patch_info_list.extend(patch_info)
                 # TODO: refactor to explicit protocol
@@ -428,7 +438,8 @@ class InferManager(base.InferManager):
                     src_pos[1]: src_pos[1] + image_info[0][1],
                 ]
 
-                base_name = Path(file_path).stem
+                input_path, gt_path = file_path
+                base_name = Path(input_path).stem
                 file_info = {
                     "src_shape": image_info[0],
                     "src_image": src_image,
@@ -446,6 +457,7 @@ class InferManager(base.InferManager):
                     "draw_dot": self.draw_dot,
                     "type_colour": self.type_info_dict,
                     "line_thickness": 2,
+                    "gt_image": gt_path
                 }
 
                 func_args = (
@@ -481,8 +493,8 @@ class InferManager(base.InferManager):
                     #     future.cancel()
                     # break
                 else:
-                    file_path = self._proc_callback(future.result())
-                    log_info("Done Assembling {}".format(file_path))
+                    res_path = self._proc_callback(future.result())
+                    log_info("Done Assembling {}".format(res_path))
 
         print('Merging {} tma to slides ......'.format(self.tma_num))
         self._tma_to_slide()
