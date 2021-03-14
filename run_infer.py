@@ -20,6 +20,7 @@ Options:
   --nr_inference_workers=<n>  Number of workers during inference. [default: 8]
   --nr_post_proc_workers=<n>  Number of workers during post-processing. [default: 16]
   --batch_size=<n>            Batch size. [default: 128]
+  --tma_num=<n>               Number of tma spots on each tma slide. [default: 8]
 
 Two command mode are `tile` and `wsi` to enter corresponding inference mode
     tile  run the inference on tile
@@ -161,7 +162,7 @@ if __name__ == '__main__':
         in_dir = Path(run_args['input_dir'])
         with open(str(in_dir / 'hover_data.json'), 'r') as hfile:
             hover_dict = json.load(hfile)
-        run_args['tma_num'] = 8
+        run_args['tma_num'] = int(args['tma_num'])
         run_args['cell_info'] = cell_info
 
     if sub_cmd == 'wsi':
@@ -194,6 +195,8 @@ if __name__ == '__main__':
         from infer.tile import InferManager
         hover_keys = list(hover_dict.keys())
         shuffle(hover_keys)
+        print('number of tma spots on each slide: {}'.
+              format(run_args['tma_num']))
         for hover_key in hover_keys:
             hover_tma = hover_dict[hover_key]
         # for hover_key, hover_tma in hover_dict.items():
