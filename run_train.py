@@ -10,7 +10,7 @@ Usage:
 Options:
   -h --help       Show this string.
   --version       Show version.
-  --gpu=<id>      Comma separated GPU list. [default: 0,1,2,3]
+  --gpu=<id>      Comma separated GPU list. [default: 0]
   --view=<dset>   Visualise images after augmentation. Choose 'train' or 'valid'.
   --train=<path>  Path to the training data
   --val=<path>    Path to the validation data
@@ -295,7 +295,7 @@ if __name__ == "__main__":
     else:
         raise Exception("Input both train path and val path")
 
-    if args["--view"] and args["--gpu"]:
+    if args["--view"] and args["--gpu"] != "0":
         raise Exception("Supply only one of --view and --gpu.")
 
     if args["--view"]:

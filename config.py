@@ -31,24 +31,27 @@ class Config(object):
         self.type_classification = True
 
         # shape information -
-        # below config is for original mode.
         # If original model mode is used, use [270,270] and [80,80] for act_shape and out_shape respectively
         # If fast model mode is used, use [256,256] and [164,164] for act_shape and out_shape respectively
+        # patch shape used as input to network - central crop performed after augmentation
+        #act_shape = [256, 256]
+        #out_shape = [164, 164]  # patch shape at output of network
+        if model_mode == "original":
+            act_shape = [270, 270]
+            out_shape = [80, 80]
+            #if act_shape != [270, 270] or out_shape != [80, 80]:
+            #    raise Exception(
+            #        "If using `original` mode, input shape must be [270,270] and output shape must be [80,80]")
+        if model_mode == "fast":
+            act_shape = [256, 256]
+            out_shape = [164, 164]
+            #if act_shape != [256, 256] or out_shape != [164, 164]:
+            #    raise Exception(
+            #        "If using `fast` mode, input shape must be [256,256] and output shape must be [164,164]")
+        
         # patch shape used during augmentation (larger patch may have less border artefacts)
         aug_shape = [540, 540]
-        # patch shape used as input to network - central crop performed after augmentation
-        act_shape = [256, 256]
-        out_shape = [164, 164]  # patch shape at output of network
-
-        if model_mode == "original":
-            if act_shape != [270, 270] or out_shape != [80, 80]:
-                raise Exception(
-                    "If using `original` mode, input shape must be [270,270] and output shape must be [80,80]")
-        if model_mode == "fast":
-            if act_shape != [256, 256] or out_shape != [164, 164]:
-                raise Exception(
-                    "If using `fast` mode, input shape must be [256,256] and output shape must be [164,164]")
-
+        
         self.dataset_name = "consep"  # extracts dataset info from dataset.py
         self.log_dir = "logs/"  # where checkpoints will be saved
 

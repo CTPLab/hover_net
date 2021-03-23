@@ -12,7 +12,7 @@ Options:
   --gpu=<id>                  GPU list. [default: 0]
   --nr_types=<n>              Number of nuclei types to predict. [default: 0]
   --type_info_path=<path>     Path to a json define mapping between type id, type name,
-                              and expected overlaid color. [default: '']
+                              and expected overlaid color. [default: ]
 
   --model_path=<path>         Path to saved checkpoint.
   --model_mode=<mode>         Original HoVer-Net or the reduced version used PanNuke and MoNuSAC,
